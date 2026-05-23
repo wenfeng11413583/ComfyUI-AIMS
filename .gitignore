@@ -17,3 +17,7 @@ Thumbs.db
 
 # AIMS cache (user-specific)
 aims_cache/
+
+# Backups
+*.bak
+*.bak2
