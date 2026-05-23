@@ -83,10 +83,11 @@ Two example workflows are included in `workflows/`:
 - **`wan21_aims_encode.json`** — Phase 1: Encode & cache image/text embeds
 - **`wan21_aims_generate.json`** — Phase 2: Load cache & generate video
 
-Based on the original `wan21_i2v_base.json` workflow.  
-Designed for **Wan2.1 I2V 14B GGUF** (RTX 3080 20GB verified).
+基于 [ganloss-latent-space-main](https://github.com/wenfeng11413583/-Cloudflare) 工作流仓库改造。
 
-Created by [瑶光城](https://github.com/wenfeng11413583) — concept by user, implementation by Hermes Agent + AI collaboration.
+硬件验证: **RTX 3080 20GB** | Wan2.1 I2V 14B GGUF Q6_K | 81f 640×480 | 20步
+
+创建者: [瑶光城](https://github.com/wenfeng11413583) — 思路 + AI 讨论论证 + Hermes Agent 执行
 
 
 ## 中文说明
@@ -113,10 +114,11 @@ Two example workflows are included in `workflows/`:
 - **`wan21_aims_encode.json`** — Phase 1: Encode & cache image/text embeds
 - **`wan21_aims_generate.json`** — Phase 2: Load cache & generate video
 
-Based on the original `wan21_i2v_base.json` workflow.  
-Designed for **Wan2.1 I2V 14B GGUF** (RTX 3080 20GB verified).
+基于 [ganloss-latent-space-main](https://github.com/wenfeng11413583/-Cloudflare) 工作流仓库改造。
 
-Created by [瑶光城](https://github.com/wenfeng11413583) — concept by user, implementation by Hermes Agent + AI collaboration.
+硬件验证: **RTX 3080 20GB** | Wan2.1 I2V 14B GGUF Q6_K | 81f 640×480 | 20步
+
+创建者: [瑶光城](https://github.com/wenfeng11413583) — 思路 + AI 讨论论证 + Hermes Agent 执行
 
 
 ## 中文说明
