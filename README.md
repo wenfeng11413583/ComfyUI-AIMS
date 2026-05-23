@@ -74,7 +74,22 @@ Delete or re-run Phase 1 to overwrite.
 
 5. **Wan2.3** — Not yet supported by WanVideoWrapper. Compatibility TBD when it arrives.
 
-### 中文说明
+#
+
+## Workflow Templates
+
+Two example workflows are included in `workflows/`:
+
+- **`wan21_aims_encode.json`** — Phase 1: Encode & cache image/text embeds
+- **`wan21_aims_generate.json`** — Phase 2: Load cache & generate video
+
+Based on the original `wan21_i2v_base.json` workflow.  
+Designed for **Wan2.1 I2V 14B GGUF** (RTX 3080 20GB verified).
+
+Created by [瑶光城](https://github.com/wenfeng11413583) — concept by user, implementation by Hermes Agent + AI collaboration.
+
+
+## 中文说明
 
 | 模型版本 | 图生视频 | 文生视频 | 说明 |
 |----------|---------|---------|------|
@@ -87,6 +102,21 @@ Delete or re-run Phase 1 to overwrite.
 - 缓存格式是 WanVideoWrapper **专有**的，换别的插件不能用
 - **换模型版本必须重新跑编码**，不通用
 - 每个 .pth 文件 8-16MB
+
+
+
+
+## Workflow Templates
+
+Two example workflows are included in `workflows/`:
+
+- **`wan21_aims_encode.json`** — Phase 1: Encode & cache image/text embeds
+- **`wan21_aims_generate.json`** — Phase 2: Load cache & generate video
+
+Based on the original `wan21_i2v_base.json` workflow.  
+Designed for **Wan2.1 I2V 14B GGUF** (RTX 3080 20GB verified).
+
+Created by [瑶光城](https://github.com/wenfeng11413583) — concept by user, implementation by Hermes Agent + AI collaboration.
 
 
 ## 中文说明
