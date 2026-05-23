@@ -1,0 +1,113 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "hanbok_i2v_input.png"
+    }
+  },
+  "3": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "WanVideoClipVisionEncode",
+    "inputs": {
+      "clip_vision": [
+        "3",
+        0
+      ],
+      "image_1": [
+        "1",
+        0
+      ],
+      "strength_1": 1.0,
+      "strength_2": 1.0,
+      "crop": "center",
+      "combine_embeds": "average",
+      "force_offload": true
+    }
+  },
+  "5": {
+    "class_type": "WanVideoVAELoader",
+    "inputs": {
+      "model_name": "Wan2.1_VAE.pth",
+      "precision": "bf16"
+    }
+  },
+  "6": {
+    "class_type": "WanVideoImageToVideoEncode",
+    "inputs": {
+      "width": 640,
+      "height": 480,
+      "num_frames": 81,
+      "noise_aug_strength": 0.1,
+      "start_latent_strength": 0.8,
+      "end_latent_strength": 0.8,
+      "force_offload": true,
+      "vae": [
+        "5",
+        0
+      ],
+      "clip_embeds": [
+        "4",
+        0
+      ],
+      "start_image": [
+        "1",
+        0
+      ],
+      "fun_or_fl2v_model": false,
+      "tiled_vae": true
+    }
+  },
+  "14": {
+    "class_type": "LoadWanVideoT5TextEncoder",
+    "inputs": {
+      "model_name": "umt5-xxl-enc-fp8_e4m3fn.safetensors",
+      "precision": "bf16",
+      "load_device": "offload_device"
+    }
+  },
+  "9": {
+    "class_type": "WanVideoTextEncode",
+    "inputs": {
+      "positive_prompt": "",
+      "negative_prompt": "",
+      "t5": [
+        "14",
+        0
+      ],
+      "force_offload": true
+    }
+  },
+  "15": {
+    "class_type": "AIMSSaveImageEmbeds",
+    "inputs": {
+      "image_embeds": [
+        "6",
+        0
+      ],
+      "file_name": "aims_hanbok_i2v",
+      "character_id": "default"
+    }
+  },
+  "16": {
+    "class_type": "AIMSSaveTextEmbeds",
+    "inputs": {
+      "text_embeds": [
+        "9",
+        0
+      ],
+      "file_name": "aims_hanbok_t5",
+      "character_id": "default"
+    }
+  },
+  "13": {
+    "class_type": "AIMSForceVRAMRelease",
+    "inputs": {
+      "trigger": "run"
+    }
+  }
+}
