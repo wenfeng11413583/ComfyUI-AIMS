@@ -87,7 +87,7 @@ Two example workflows are included in `workflows/`:
 
 硬件验证: **RTX 3080 20GB** | Wan2.1 I2V 14B GGUF Q6_K | 81f 640×480 | 20步
 
-创建者: [瑶光城](https://github.com/wenfeng11413583) — 思路 + AI 讨论论证 + Hermes Agent 执行
+创建者: [11413583](https://github.com/wenfeng11413583) — 思路 + AI 讨论论证 + Hermes Agent 执行
 
 
 ## 中文说明
@@ -118,7 +118,7 @@ Two example workflows are included in `workflows/`:
 
 硬件验证: **RTX 3080 20GB** | Wan2.1 I2V 14B GGUF Q6_K | 81f 640×480 | 20步
 
-创建者: [瑶光城](https://github.com/wenfeng11413583) — 思路 + AI 讨论论证 + Hermes Agent 执行
+创建者: [11413583](https://github.com/wenfeng11413583) — 思路 + AI 讨论论证 + Hermes Agent 执行
 
 
 ## 中文说明
