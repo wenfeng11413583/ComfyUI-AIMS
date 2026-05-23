@@ -34,24 +34,13 @@ Cache Structure:
 import os
 import gc
 import torch
-import base64
-import requests
-import urllib3
-import numpy as np
-from PIL import Image
 import folder_paths
 import comfy.model_management as mm
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ─── Cache directory ────────────────────────────────────────
 # All cached .pth files live under ComfyUI/aims_cache/{character_id}/
 AIMS_CACHE_DIR = os.path.join(folder_paths.base_path, "aims_cache")
 os.makedirs(AIMS_CACHE_DIR, exist_ok=True)
-
-# TRELLIS 3D output
-TRELLIS_OUTPUT_DIR = os.path.join(folder_paths.get_output_directory(), "trellis_3d")
-os.makedirs(TRELLIS_OUTPUT_DIR, exist_ok=True)
 
 # ─── Helper ─────────────────────────────────────────────────
 def _ensure_char_dir(character_id: str) -> str:
@@ -366,7 +355,16 @@ class AIMSTrellisTextTo3D:
 class AIMSGLBRenderer:
     """
     Load a GLB 3D model and render it from multiple camera angles.
-    Outputs a batch of images and a collage grid.
+    Outputs images that can feed directly into WanVideo I2V.
+
+    Inputs:
+      glb_path      : Path to the .glb file
+      views         : Which views to render (front, side, back, three_quarter, all)
+      resolution    : Output image resolution
+      bg_color      : Background color (white, black, transparent)
+
+    Outputs:
+      images        : List of rendered images (IMAGE type)
     """
 
     @classmethod
@@ -374,143 +372,126 @@ class AIMSGLBRenderer:
         return {
             "required": {
                 "glb_path": ("STRING", {"default": "", "multiline": False}),
-                "views": (["all_8", "all_4", "all", "front", "side", "back", "three_quarter", "front_face", "left_face", "right_face"], {"default": "all_8"}),
+                "views": (["front", "side", "back", "three_quarter", "all"], {"default": "all"}),
                 "resolution": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
-                "bg_color": (["black", "white", "gray"], {"default": "black"}),
-                "layout": (["grid", "batch"], {"default": "grid"}),
+                "bg_color": (["white", "black", "transparent"], {"default": "black"}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING",)
-    RETURN_NAMES = ("images_batch", "collage_grid", "info",)
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "STRING",)
+    RETURN_NAMES = ("front_view", "side_view", "back_view", "three_quarter", "info",)
     FUNCTION = "render"
     CATEGORY = "AIMS"
 
-    def render(self, glb_path, views, resolution, bg_color, layout):
+    def render(self, glb_path, views, resolution, bg_color):
+        try:
+            import trimesh
+        except ImportError:
+            raise ValueError("trimesh not installed. Run: pip install trimesh")
+
         if not glb_path or not os.path.exists(glb_path):
             raise FileNotFoundError(f"GLB file not found: {glb_path}")
 
-        import trimesh, numpy as np
-        from PIL import Image, ImageDraw
-        import torch
-
+        # Load mesh
         mesh_data = trimesh.load(glb_path)
         if isinstance(mesh_data, trimesh.Scene):
             mesh = trimesh.util.concatenate(list(mesh_data.geometry.values()))
         else:
             mesh = mesh_data
 
-        bounds = mesh.bounds
-        center = (bounds[0] + bounds[1]) / 2
-        size = np.linalg.norm(bounds[1] - bounds[0])
-        cam_dist = max(size * 2.5, 0.5)
+        verts = mesh.vertices
+        faces = mesh.faces
 
-        viewpoints = {
-            "front": [0, 0, cam_dist],
-            "front_left": [cam_dist*0.5, 0, cam_dist*0.866],
-            "left": [cam_dist, 0, 0],
-            "side": [cam_dist, 0, 0],
-            "back_left": [cam_dist*0.866, 0, -cam_dist*0.5],
-            "back": [0, 0, -cam_dist],
-            "back_right": [-cam_dist*0.866, 0, -cam_dist*0.5],
-            "right": [-cam_dist, 0, 0],
-            "front_right": [-cam_dist*0.5, 0, cam_dist*0.866],
-            "three_quarter": [cam_dist*0.707, 0, cam_dist*0.707],
-            "front_face": [0, cam_dist*0.15, cam_dist*0.8],
-            "left_face": [cam_dist*0.7, cam_dist*0.15, cam_dist*0.5],
-            "right_face": [-cam_dist*0.7, cam_dist*0.15, cam_dist*0.5],
+        # Center and scale
+        center = verts.mean(axis=0)
+        verts = verts - center
+        scale = np.abs(verts).max()
+        if scale > 0:
+            verts = verts / scale * 0.8
+
+        # Camera angles (rotation matrices)
+        angles = {
+            "front": np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),           # 0 deg
+            "side": np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]]),           # 90 deg Y
+            "back": np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]),          # 180 deg Y
+            "three_quarter": np.array([[0.707, 0, 0.707], [0, 1, 0], [-0.707, 0, 0.707]]),  # 45 deg Y
         }
 
-        view_groups = {
-            "all_8": ["front","front_left","left","back_left","back","back_right","right","front_right"],
-            "all_4": ["front","side","back","three_quarter"],
-            "all": ["front","side","back","three_quarter"],
-            "front": ["front"], "side": ["side"], "back": ["back"],
-            "three_quarter": ["three_quarter"],
-            "front_face": ["front_face"], "left_face": ["left_face"], "right_face": ["right_face"],
-        }
-        view_names = view_groups.get(views, ["front","side","back","three_quarter"])
-        labels = {"front":"正面","front_left":"左前","left":"左侧","side":"侧面",
-                  "back_left":"左后","back":"背面","back_right":"右后","right":"右侧",
-                  "front_right":"右前","three_quarter":"3/4","front_face":"脸部",
-                  "left_face":"左脸","right_face":"右脸"}
+        view_names = ["front", "side", "back", "three_quarter"] if views == "all" else [views]
 
-        bg_map = {"black": (0,0,0), "white": (255,255,255), "gray": (77,77,77)}
-        bg = bg_map.get(bg_color, (0,0,0))
-        fg = (200,200,200) if bg_color == "black" else (50,50,50)
-
-        images = []
+        result_images = []
         for vn in view_names:
-            cam_pos = viewpoints[vn]
-            try:
-                scene = trimesh.Scene(mesh.copy())
-                scene.camera.resolution = [resolution, resolution]
-                scene.camera.fov = (45.0, 45.0)
-                t = np.eye(4)
-                t[:3, 3] = cam_pos
-                scene.camera_transform = t
-                from trimesh.viewer import render_scene
-                png = render_scene(scene, resolution=(resolution, resolution))
-                img = Image.open(trimesh.util.wrap_as_stream(png)).convert('RGB')
-            except Exception:
-                img = Image.new('RGB', (resolution, resolution), bg)
-                draw = ImageDraw.Draw(img)
-                verts = mesh.vertices - center
-                rot = self._rot(vn)
-                rv = verts @ rot.T
-                pts = rv[:, :2]
-                pts[:, 1] = -pts[:, 1]
-                mn, mx = pts.min(axis=0), pts.max(axis=0)
-                nrm = (pts - mn) / np.maximum(mx - mn, 1)
-                px = (nrm[:, 0] * (resolution-1)).astype(int)
-                py = (nrm[:, 1] * (resolution-1)).astype(int)
-                fv = mesh.vertices[mesh.faces] - center
-                v0, v1, v2 = fv[:, 0], fv[:, 1], fv[:, 2]
-                nz = np.cross(v1-v0, v2-v0) @ rot.T
-                for i, (face, z) in enumerate(zip(mesh.faces, nz[:, 2])):
-                    if z < 0: continue
-                    try:
-                        s = max(60, min(200, 60 + int(z * 70)))
-                        draw.polygon([(px[face[0]],py[face[0]]),(px[face[1]],py[face[1]]),(px[face[2]],py[face[2]])], fill=(s,s,s))
-                    except: pass
-            images.append(np.array(img).astype(np.float32) / 255.0)
+            rot = angles[vn]
+            rotated = verts @ rot.T
 
-        n = len(images)
-        batch = torch.from_numpy(np.stack(images, axis=0))
+            # Orthographic projection to 2D (ignore Z, use X for horizontal, Y for vertical)
+            pts_2d = rotated[:, :2]  # X, Y
 
-        # Grid collage
-        cols = min(n, 4)
-        rows = (n + 3) // 4
-        gw, gh = cols * resolution, rows * resolution
-        grid = Image.new('RGB', (gw, gh), (0, 0, 0))
-        for i in range(n):
-            c, r = i % cols, i // cols
-            x, y = c * resolution, r * resolution
-            pil = Image.fromarray((images[i] * 255).astype(np.uint8))
-            grid.paste(pil, (x, y))
-            d = ImageDraw.Draw(grid)
-            d.text((x+5, y+5), labels.get(view_names[i], view_names[i]), fill=(255,255,255))
+            # Flip Y for image coordinates
+            pts_2d[:, 1] = -pts_2d[:, 1]
 
-        grid_np = np.array(grid).astype(np.float32) / 255.0
-        grid_t = torch.from_numpy(grid_np)[None, :, :, :]
-        info = f"{n} views: {', '.join(view_names)} | {len(mesh.vertices)} verts | {resolution}px"
-        return (batch, grid_t, info)
+            # Map to pixel coordinates
+            margin = 0.1
+            min_xy = pts_2d.min(axis=0)
+            max_xy = pts_2d.max(axis=0)
+            range_xy = max_xy - min_xy
+            if range_xy[0] == 0:
+                range_xy[0] = 1
+            if range_xy[1] == 0:
+                range_xy[1] = 1
 
-    def _rot(self, name):
-        import numpy as np
-        a = {
-            "front": np.array([[1,0,0],[0,1,0],[0,0,1]]),
-            "front_left": np.array([[0.866,0,0.5],[0,1,0],[-0.5,0,0.866]]),
-            "left": np.array([[0,0,1],[0,1,0],[-1,0,0]]),
-            "side": np.array([[0,0,1],[0,1,0],[-1,0,0]]),
-            "back_left": np.array([[-0.5,0,0.866],[0,1,0],[-0.866,0,-0.5]]),
-            "back": np.array([[-1,0,0],[0,1,0],[0,0,-1]]),
-            "back_right": np.array([[-0.5,0,-0.866],[0,1,0],[0.866,0,-0.5]]),
-            "right": np.array([[0,0,-1],[0,1,0],[1,0,0]]),
-            "front_right": np.array([[0.866,0,-0.5],[0,1,0],[0.5,0,0.866]]),
-            "three_quarter": np.array([[0.707,0,0.707],[0,1,0],[-0.707,0,0.707]]),
-        }
-        return a.get(name, a["front"])
+            norm_pts = (pts_2d - min_xy) / range_xy
+            size = resolution
+            px = (norm_pts[:, 0] * (size - 1)).astype(int)
+            py = (norm_pts[:, 1] * (size - 1)).astype(int)
+
+            # Create image
+            if bg_color == "transparent":
+                img = np.zeros((size, size, 4), dtype=np.uint8)
+            else:
+                bg = (255, 255, 255) if bg_color == "white" else (0, 0, 0)
+                img = np.full((size, size, 3), bg, dtype=np.uint8)
+
+            # Draw faces as filled polygons
+            from PIL import ImageDraw
+            pil_img = Image.fromarray(img if img.shape[2] == 3 else img)
+            draw = ImageDraw.Draw(pil_img)
+
+            # Compute face normals for backface culling
+            face_verts = verts[faces]
+            v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
+            normals = np.cross(v1 - v0, v2 - v0)
+            rotated_normals = normals @ rot.T
+
+            # Only draw front-facing faces
+            for i, (face, normal) in enumerate(zip(faces, rotated_normals)):
+                if normal[2] < 0:  # facing camera
+                    continue
+                tri_px = [(px[face[0]], py[face[0]]),
+                          (px[face[1]], py[face[1]]),
+                          (px[face[2]], py[face[2]])]
+                try:
+                    if img.shape[2] == 4:
+                        draw.polygon(tri_px, fill=(180, 180, 180, 255), outline=(100, 100, 100, 255))
+                    else:
+                        color = 180 if bg_color == "black" else 100
+                        draw.polygon(tri_px, fill=(color, color, color), outline=(200, 200, 200))
+                except:
+                    pass
+
+            img_np = np.array(pil_img).astype(np.float32) / 255.0
+            if img_np.shape[2] == 4:
+                img_np = img_np[:, :, :3]  # Remove alpha for ComfyUI IMAGE type
+            tensor = torch.from_numpy(img_np)[None, :, :, :]  # BHWC
+            result_images.append(tensor)
+
+        # Pad to 4 outputs
+        while len(result_images) < 4:
+            result_images.append(torch.zeros((1, resolution, resolution, 3), dtype=torch.float32))
+
+        info = f"Views: {view_names} | Mesh: {len(verts)} verts, {len(faces)} faces"
+        return tuple(result_images[:4]) + (info,)
+
 
 
 
@@ -520,8 +501,6 @@ NODE_CLASS_MAPPINGS = {
     "AIMSSaveTextEmbeds": AIMSSaveTextEmbeds,
     "AIMSLoadTextEmbeds": AIMSLoadTextEmbeds,
     "AIMSForceVRAMRelease": AIMSForceVRAMRelease,
-    "AIMSTrellisTextTo3D": AIMSTrellisTextTo3D,
-    "AIMSGLBRenderer": AIMSGLBRenderer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -530,6 +509,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AIMSSaveTextEmbeds": "AIMS Save Text Embeds",
     "AIMSLoadTextEmbeds": "AIMS Load Text Embeds",
     "AIMSForceVRAMRelease": "AIMS Force VRAM Release",
-    "AIMSTrellisTextTo3D": "AIMS TRELLIS Text to 3D",
-    "AIMSGLBRenderer": "AIMS GLB Renderer",
 }
